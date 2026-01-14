@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  pronunciation-api:
+    build: .
+    container_name: ashlyn-prashad-api
+    ports:
+      - "8081:8081"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    env_file:
+      - .env
+    volumes:
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
