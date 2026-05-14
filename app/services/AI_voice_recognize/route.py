@@ -16,13 +16,13 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 @router.post("/analyze", response_model=PronunciationAnalysisResponse)
 async def analyze_pronunciation(
-    document: UploadFile = File(..., description="PDF or DOC file containing the text to be read"),
+    document: UploadFile = File(..., description="PDF or PNG file containing the text to be read"),
     audio: UploadFile = File(..., description="Audio file of the person reading the document")
 ):
     """
     Analyze pronunciation by comparing document text with audio transcription.
     
-    - **document**: Upload a PDF, DOC, or PNG file (the reference text)
+    - **document**: Upload a PDF or PNG file (the reference text). PDFs will be converted to images for OCR.
     - **audio**: Upload an audio file (MP3, WAV, M4A, etc.) of someone reading the document
     
     Returns detailed analysis of pronunciation mistakes and accuracy score.
@@ -33,10 +33,10 @@ async def analyze_pronunciation(
     try:
         # Validate document file type
         doc_extension = os.path.splitext(document.filename)[1].lower()
-        if doc_extension not in ['.pdf', '.doc', '.docx', '.png']:
+        if doc_extension not in ['.pdf', '.png']:
             raise HTTPException(
                 status_code=400, 
-                detail="Document must be a PDF, DOC, DOCX, or PNG file"
+                detail="Document must be a PDF or PNG file"
             )
         
         # Validate audio file type

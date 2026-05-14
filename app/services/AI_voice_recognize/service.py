@@ -6,34 +6,63 @@ from difflib import SequenceMatcher
 import re
 from app.core.config import settings
 from app.services.AI_voice_recognize.schema import PronunciationMistake, PronunciationAnalysisResponse
+import fitz
+from io import BytesIO
 
 
 class PronunciationAnalysisService:
     def __init__(self):
         self.client = OpenAI(api_key=settings.openai_api_key)
     
+    def _convert_pdf_to_images(self, file_path: str) -> List[bytes]:
+        """
+        Convert PDF to list of PNG images (one per page)
+        """
+        images = []
+        try:
+            pdf_document = fitz.open(file_path)
+            
+            for page_num in range(len(pdf_document)):
+                page = pdf_document[page_num]
+                # Render page to image with high quality
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                # Convert to PNG
+                image_bytes = pix.tobytes("png")
+                images.append(image_bytes)
+            
+            pdf_document.close()
+        except Exception as e:
+            raise Exception(f"Failed to convert PDF to images: {str(e)}")
+        
+        return images
+    
     async def extract_text_from_document(self, file_path: str, file_extension: str) -> str:
         """
-        Extract text from PDF or DOC using OpenAI Vision API with OCR capability
+        Extract text from PDF, DOC, or PNG using OpenAI Vision API with OCR capability
         """
         try:
-            # Read the file and encode it to base64
-            with open(file_path, "rb") as file:
-                file_content = file.read()
+            # Prepare image bytes based on file type
+            image_bytes_list = []
             
-            # For PDF/DOC/PNG, we'll use OpenAI's vision API with image conversion
-            # Note: For production, you might want to convert PDF pages to images first
-            # Using a library like pdf2image or PyMuPDF
-            
-            # Determine the appropriate MIME type
-            if file_extension.lower() == '.png':
-                mime_type = 'image/png'
+            if file_extension.lower() == '.pdf':
+                # Convert PDF pages to images
+                image_bytes_list = self._convert_pdf_to_images(file_path)
+            elif file_extension.lower() in ['.doc', '.docx']:
+                # For DOC/DOCX, convert to PDF first, then to images
+                # For now, we'll raise an error since DOCX conversion is more complex
+                raise Exception("DOC/DOCX files are not yet supported. Please convert to PDF or PNG first.")
+            elif file_extension.lower() == '.png':
+                # Read PNG directly
+                with open(file_path, "rb") as file:
+                    image_bytes_list = [file.read()]
             else:
-                mime_type = 'application/pdf'
+                raise Exception(f"Unsupported file format: {file_extension}")
             
-            # If it's a supported format, use OpenAI Vision API
-            if file_extension.lower() in ['.pdf', '.doc', '.docx', '.png']:
-                base64_document = base64.b64encode(file_content).decode('utf-8')
+            # Extract text from all images
+            all_text = []
+            
+            for image_bytes in image_bytes_list:
+                base64_image = base64.b64encode(image_bytes).decode('utf-8')
                 
                 response = self.client.chat.completions.create(
                     model="gpt-4o",
@@ -43,12 +72,12 @@ class PronunciationAnalysisService:
                             "content": [
                                 {
                                     "type": "text",
-                                    "text": "Extract all the text from this document. Return only the text content, no additional commentary."
+                                    "text": "Extract all the text from this image. Return only the text content, no additional commentary."
                                 },
                                 {
                                     "type": "image_url",
                                     "image_url": {
-                                        "url": f"data:{mime_type};base64,{base64_document}"
+                                        "url": f"data:image/png;base64,{base64_image}"
                                     }
                                 }
                             ]
@@ -58,9 +87,9 @@ class PronunciationAnalysisService:
                 )
                 
                 extracted_text = response.choices[0].message.content
-                return extracted_text.strip()
+                all_text.append(extracted_text.strip())
             
-            return ""
+            return "\n".join(all_text)
             
         except Exception as e:
             raise Exception(f"Error extracting text from document: {str(e)}")
