@@ -7,7 +7,6 @@ import re
 from app.core.config import settings
 from app.services.AI_voice_recognize.schema import PronunciationMistake, PronunciationAnalysisResponse
 import fitz
-from io import BytesIO
 
 
 class PronunciationAnalysisService:
@@ -94,7 +93,7 @@ class PronunciationAnalysisService:
         except Exception as e:
             raise Exception(f"Error extracting text from document: {str(e)}")
     
-    async def transcribe_audio(self, audio_file_path: str) -> str:
+    async def transcribe_audio(self, audio_file_path: str, expected_text: str = "") -> str:
         """
         Transcribe audio file using OpenAI Whisper model
         """
@@ -103,6 +102,13 @@ class PronunciationAnalysisService:
                 transcription = self.client.audio.transcriptions.create(
                     model="whisper-1",
                     file=audio_file,
+                    language="en",
+                    prompt=(
+                        "Transcribe this English speech verbatim. "
+                        f"Reference text: {expected_text[:500]}"
+                        if expected_text
+                        else "Transcribe this English speech verbatim."
+                    ),
                     response_format="text"
                 )
             
@@ -205,7 +211,7 @@ class PronunciationAnalysisService:
             document_text = await self.extract_text_from_document(document_path, doc_extension)
             
             # Transcribe audio
-            transcribed_text = await self.transcribe_audio(audio_path)
+            transcribed_text = await self.transcribe_audio(audio_path, expected_text=document_text)
             
             # Analyze pronunciation
             mistakes, accuracy_score = self.analyze_pronunciation(document_text, transcribed_text)
